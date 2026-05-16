@@ -222,6 +222,13 @@ deploy/macos/gpt-image-web-broker.plist.template
 复制到 `~/Library/LaunchAgents/com.openclaw.gpt-image-web-broker.plist` 后，把
 路径替换成 Mac mini 上的真实 repo 和用户目录，再用 `launchctl load` 启动。
 
+## 插件市场发布
+
+- 独立插件仓库：<https://github.com/yurisachan16-creator/astrbot-plugin-image-web>
+- AstrBot 市场提交 Issue：<https://github.com/AstrBotDevs/AstrBot/issues/8212>
+- 打包检查：`scripts/astrbot/package_plugins.py` 会生成小于 16MB 的插件 zip，并把
+  `_openclaw_command_guards.py` 内嵌进需要命令避让的插件包。
+
 ## 错误码
 
 - `broker_token_missing`：未设置 broker token。
