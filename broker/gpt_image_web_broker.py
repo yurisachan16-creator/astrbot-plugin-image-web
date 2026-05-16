@@ -86,7 +86,7 @@ DEFAULT_AI_STUDIO_PROFILE_PATH = (
 )
 DEFAULT_AI_STUDIO_CDP_URL = "http://127.0.0.1:18793"
 GPT_START_URL = "https://chatgpt.com/"
-AI_STUDIO_START_URL = "https://aistudio.google.com/"
+AI_STUDIO_START_URL = "https://aistudio.google.com/apps?pli=1"
 LOCAL_CDP_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -1502,8 +1502,27 @@ class AiStudioBrowserDriver:
             )
 
     def _ensure_model_available(self, page: Any) -> None:
-        body_text = (page.locator("body").inner_text(timeout=10_000) or "").lower()
         model_markers = ("nano banana", "banana", "gemini-3.1-flash-image", "image generation")
+        deadline = time.monotonic() + 30
+        body_text = ""
+        while time.monotonic() < deadline:
+            body_text = (page.locator("body").inner_text(timeout=10_000) or "").lower()
+            if any(marker in body_text for marker in model_markers):
+                for label in ("Create & edit images", "Generate high-quality images"):
+                    try:
+                        option = page.get_by_text(label, exact=False).first
+                        if option.count() > 0 and option.is_visible(timeout=1_000):
+                            option.click(timeout=2_000)
+                            page.wait_for_timeout(1_000)
+                            break
+                    except Exception:
+                        continue
+                return
+            if "/apps" in str(getattr(page, "url", "")) and "build your ideas with gemini" in body_text:
+                return
+            if not hasattr(page, "wait_for_timeout"):
+                break
+            page.wait_for_timeout(1_000)
         if not any(marker in body_text for marker in model_markers):
             raise BrokerError(
                 error_payload(
@@ -1558,6 +1577,7 @@ class AiStudioBrowserDriver:
             "button[aria-label*='Generate']",
             "button:has-text('Run')",
             "button:has-text('Generate')",
+            "button:has-text('Build')",
             "button:has-text('运行')",
             "button:has-text('生成')",
         )
