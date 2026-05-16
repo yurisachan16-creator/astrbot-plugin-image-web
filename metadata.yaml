@@ -1,0 +1,9 @@
+name: "astrbot_plugin_gpt_image_web"
+display_name: "Image Web Broker 绘图"
+author: "Codex"
+version: "v0.1.0"
+desc: "通过本机 broker 调用 GPT 和 AI Studio 网页授权绘图后端，支持 /gptimg、/gptedit、/banana 和 /bananaedit。"
+repo: "https://github.com/yurisachan16-creator/astrbot-plugin-image-web"
+astrbot_version: ">=4.8.0"
+support_platforms:
+  - aiocqhttp

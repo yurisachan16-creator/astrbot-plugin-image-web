@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.openclaw.gpt-image-web-broker</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/Users/your-user/path/to/openclaw/scripts/astrbot/gpt_image_web_broker_service.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/your-user/path/to/openclaw</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PYTHONUNBUFFERED</key>
+      <string>1</string>
+      <key>IMAGE_WEB_ENV_FILE</key>
+      <string>/Users/your-user/.openclaw/image-web.env</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/your-user/Library/Logs/gpt-image-web-broker.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/your-user/Library/Logs/gpt-image-web-broker.stderr.log</string>
+  </dict>
+</plist>

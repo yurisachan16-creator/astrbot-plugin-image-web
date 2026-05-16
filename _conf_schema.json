@@ -1,0 +1,53 @@
+{
+  "enabled_groups": {
+    "type": "list",
+    "description": "启用 /gptimg、/gptedit、/banana、/bananaedit 的 QQ 群号",
+    "hint": "示例：[\"123456789\"]。留空时不响应任何群。",
+    "default": []
+  },
+  "admin_user_ids": {
+    "type": "list",
+    "description": "允许使用 /imgstatus 的维护者 QQ 号",
+    "hint": "示例：[\"10001\"]。只有这些用户能查看脱敏 broker 状态。",
+    "default": []
+  },
+  "broker_url": {
+    "type": "string",
+    "description": "本机 GPT 图片 broker 地址",
+    "hint": "必须指向 127.0.0.1 或 localhost。",
+    "default": "http://127.0.0.1:18791"
+  },
+  "broker_token": {
+    "type": "string",
+    "description": "broker Bearer token",
+    "hint": "必填。插件不会读取网页登录态，只把这个 token 发给本机 broker。",
+    "default": ""
+  },
+  "command_providers": {
+    "type": "object",
+    "description": "命令到 provider 的映射",
+    "hint": "默认 /gptimg 和 /gptedit 使用 gpt_browser，/banana 和 /bananaedit 使用 ai_studio_browser。",
+    "default": {
+      "gptimg": "gpt_browser",
+      "gptedit": "gpt_browser",
+      "banana": "ai_studio_browser",
+      "bananaedit": "ai_studio_browser"
+    }
+  },
+  "timeout_seconds": {
+    "type": "float",
+    "description": "单次生成/改图超时时间",
+    "default": 300
+  },
+  "queue_max_size_per_group": {
+    "type": "int",
+    "description": "每个群最多同时排队/运行的任务数",
+    "default": 3
+  },
+  "output_dir": {
+    "type": "string",
+    "description": "图片保存目录",
+    "hint": "留空时保存到 data/plugin_data/astrbot_plugin_gpt_image_web/images。",
+    "default": ""
+  }
+}
