@@ -73,6 +73,9 @@ SERVICE_UNAVAILABLE_CODES = {
     "ai_studio_login_required",
     "ai_studio_model_missing",
     "ai_studio_composer_missing",
+    "ai_studio_submit_unavailable",
+    "ai_studio_upload_missing",
+    "ai_studio_upload_timeout",
     "ai_studio_output_not_found",
     "ai_studio_generation_failed",
     "ai_studio_timeout",
@@ -1386,18 +1389,26 @@ class AiStudioBrowserDriver:
         return self._run(prompt)
 
     def edit(self, prompt: str, *, image_base64: str, mime_type: str) -> ImageResult:
-        del prompt, image_base64, mime_type
-        raise BrokerError(
-            error_payload(
-                "ai_studio_edit_unsupported",
-                problem="AI Studio image edit is not enabled yet",
-                cause="the AI Studio v1 driver only supports text-to-image generation",
-                fix="use /banana for generation or /gptedit for reference image edits",
-                retryable=False,
-            )
-        )
+        suffix = ".png"
+        if mime_type == "image/jpeg":
+            suffix = ".jpg"
+        elif mime_type == "image/webp":
+            suffix = ".webp"
+        decoded = _decode_base64_image(image_base64)
+        if isinstance(decoded, dict):
+            raise BrokerError(decoded)
+        with NamedTemporaryFile(prefix="ai-studio-image-edit-", suffix=suffix, delete=False) as handle:
+            handle.write(decoded)
+            input_path = Path(handle.name)
+        try:
+            return self._run(prompt, input_path=input_path)
+        finally:
+            try:
+                input_path.unlink()
+            except OSError:
+                pass
 
-    def _run(self, prompt: str) -> ImageResult:
+    def _run(self, prompt: str, input_path: Path | None = None) -> ImageResult:
         try:
             from playwright.sync_api import Error as PlaywrightError
             from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -1423,6 +1434,9 @@ class AiStudioBrowserDriver:
                     self._ensure_logged_in(page)
                     self._ensure_model_available(page)
                     before = self._image_fingerprints(page)
+                    if input_path is not None:
+                        self._upload_reference_image(page, input_path, timeout_ms=timeout_ms)
+                        before = self._image_fingerprints(page)
                     self._submit_prompt(page, prompt, timeout_ms=timeout_ms)
                     return self._wait_for_new_image(page, before, timeout_ms=timeout_ms)
                 finally:
@@ -1576,6 +1590,20 @@ class AiStudioBrowserDriver:
             page.keyboard.press("ControlOrMeta+A")
             page.keyboard.press("Backspace")
             page.keyboard.insert_text(prompt)
+        try:
+            page.evaluate(
+                """prompt => {
+                    const textareas = Array.from(document.querySelectorAll("textarea"));
+                    const target = textareas.find(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                    if (!target) return;
+                    target.value = prompt;
+                    target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+                    target.dispatchEvent(new Event("change", { bubbles: true }));
+                }""",
+                prompt,
+            )
+        except Exception:
+            pass
         deadline = time.monotonic() + min(timeout_ms / 1000, 120)
         selectors = (
             "button[aria-label*='Run']",
@@ -1601,6 +1629,130 @@ class AiStudioBrowserDriver:
                 problem="AI Studio generate button did not become available",
                 cause="known submit selectors did not match or stayed disabled",
                 fix="check the dedicated AI Studio tab and retry",
+                retryable=True,
+            )
+        )
+
+    def _upload_reference_image(self, page: Any, input_path: Path, *, timeout_ms: int) -> None:
+        self._attempt_reference_upload(page, input_path)
+        page.wait_for_timeout(1_000)
+        if self._acknowledge_upload_copyright(page):
+            self._attempt_reference_upload(page, input_path)
+        self._wait_for_reference_upload(page, input_path.name, timeout_ms=timeout_ms)
+
+    def _attempt_reference_upload(self, page: Any, input_path: Path) -> None:
+        self._click_insert_media_button(page)
+        page.wait_for_timeout(500)
+        try:
+            with page.expect_file_chooser(timeout=5_000) as file_chooser:
+                upload = page.get_by_text("Upload files", exact=False).first
+                if upload.count() > 0 and upload.is_visible(timeout=1_000):
+                    upload.click(timeout=5_000)
+                else:
+                    page.locator("input[type='file']").first.click(timeout=5_000)
+            file_chooser.value.set_files(str(input_path))
+            return
+        except Exception:
+            pass
+        inputs = page.locator("input[type='file']")
+        try:
+            if inputs.count() > 0:
+                inputs.first.set_input_files(str(input_path))
+                return
+        except Exception:
+            pass
+        raise BrokerError(
+            error_payload(
+                "ai_studio_upload_missing",
+                problem="AI Studio image upload control was not found",
+                cause="known upload selectors did not match",
+                fix="open AI Studio and verify the Insert images or files menu is available",
+                retryable=True,
+            )
+        )
+
+    def _click_insert_media_button(self, page: Any) -> None:
+        labels = (
+            "Insert images or files",
+            "Insert images, videos, audio, or files",
+            "Insert files",
+        )
+        for label in labels:
+            try:
+                button = page.get_by_label(label, exact=False).first
+                if button.count() > 0 and button.is_visible(timeout=1_000):
+                    button.click(timeout=5_000)
+                    return
+            except Exception:
+                continue
+        try:
+            button = page.locator("button").filter(has_text="add_circle").first
+            if button.count() > 0 and button.is_visible(timeout=1_000):
+                button.click(timeout=5_000)
+                return
+        except Exception:
+            pass
+        raise BrokerError(
+            error_payload(
+                "ai_studio_upload_missing",
+                problem="AI Studio insert image button was not found",
+                cause="known insert-media selectors did not match",
+                fix="open AI Studio and verify the Insert images or files button is visible",
+                retryable=True,
+            )
+        )
+
+    def _acknowledge_upload_copyright(self, page: Any) -> bool:
+        for label in ("Agree to the copyright acknowledgement", "Acknowledge"):
+            try:
+                button = page.get_by_label(label, exact=False).first
+                if button.count() > 0 and button.is_visible(timeout=1_000):
+                    button.click(timeout=5_000)
+                    page.wait_for_timeout(500)
+                    return True
+            except Exception:
+                continue
+        try:
+            button = page.get_by_text("Acknowledge", exact=False).first
+            if button.count() > 0 and button.is_visible(timeout=1_000):
+                button.click(timeout=5_000)
+                page.wait_for_timeout(500)
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _wait_for_reference_upload(self, page: Any, filename: str, *, timeout_ms: int) -> None:
+        deadline = time.monotonic() + min(timeout_ms / 1000, 90)
+        stable_since: float | None = None
+        while time.monotonic() < deadline:
+            body_text = (page.locator("body").inner_text(timeout=3_000) or "").lower()
+            has_reference = filename.lower() in body_text
+            upload_busy = any(
+                marker in body_text
+                for marker in (
+                    "uploading",
+                    "processing",
+                    "正在上传",
+                    "上传中",
+                    "正在处理",
+                    "处理中",
+                )
+            )
+            if has_reference and not upload_busy:
+                if stable_since is None:
+                    stable_since = time.monotonic()
+                elif time.monotonic() - stable_since >= 1:
+                    return
+            else:
+                stable_since = None
+            page.wait_for_timeout(500)
+        raise BrokerError(
+            error_payload(
+                "ai_studio_upload_timeout",
+                problem="AI Studio reference image upload did not finish",
+                cause="uploaded filename did not settle in the prompt before timeout",
+                fix="retry /bananaedit after AI Studio upload becomes available",
                 retryable=True,
             )
         )
@@ -1798,6 +1950,7 @@ def success_payload(result: ImageResult, *, request_id: str | None = None) -> di
         "image_base64": result.image_base64,
         "mime_type": result.mime_type,
         "backend": result.backend,
+        "provider": result.backend,
         "request_id": request_id or globals()["request_id"](),
     }
 
