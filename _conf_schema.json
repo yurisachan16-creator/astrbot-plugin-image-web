@@ -27,11 +27,27 @@
     "type": "object",
     "description": "命令到 provider 的映射",
     "hint": "默认 /gptimg 和 /gptedit 使用 gpt_browser，/banana 和 /bananaedit 使用 ai_studio_browser。",
-    "default": {
-      "gptimg": "gpt_browser",
-      "gptedit": "gpt_browser",
-      "banana": "ai_studio_browser",
-      "bananaedit": "ai_studio_browser"
+    "items": {
+      "gptimg": {
+        "type": "string",
+        "description": "/gptimg provider",
+        "default": "gpt_browser"
+      },
+      "gptedit": {
+        "type": "string",
+        "description": "/gptedit provider",
+        "default": "gpt_browser"
+      },
+      "banana": {
+        "type": "string",
+        "description": "/banana provider",
+        "default": "ai_studio_browser"
+      },
+      "bananaedit": {
+        "type": "string",
+        "description": "/bananaedit provider",
+        "default": "ai_studio_browser"
+      }
     }
   },
   "timeout_seconds": {
