@@ -1672,35 +1672,65 @@ class AiStudioBrowserDriver:
         )
 
     def _click_insert_media_button(self, page: Any) -> None:
+        deadline = time.monotonic() + 30
+        selectors = (
+            "button[aria-label*='Insert'][aria-label*='image']",
+            "button[aria-label*='Insert'][aria-label*='file']",
+            "button[aria-label*='Upload']",
+            "button:has-text('add_circle')",
+        )
         labels = (
             "Insert images or files",
             "Insert images, videos, audio, or files",
             "Insert files",
         )
-        for label in labels:
-            try:
-                button = page.get_by_label(label, exact=False).first
-                if button.count() > 0 and button.is_visible(timeout=1_000):
-                    button.click(timeout=5_000)
-                    return
-            except Exception:
-                continue
-        try:
-            button = page.locator("button").filter(has_text="add_circle").first
-            if button.count() > 0 and button.is_visible(timeout=1_000):
-                button.click(timeout=5_000)
-                return
-        except Exception:
-            pass
+        while time.monotonic() < deadline:
+            for label in labels:
+                try:
+                    button = page.get_by_label(label, exact=False).first
+                    if button.count() > 0 and button.is_visible(timeout=1_000):
+                        button.click(timeout=5_000)
+                        return
+                except Exception:
+                    continue
+            for selector in selectors:
+                try:
+                    button = page.locator(selector).first
+                    if button.count() > 0 and button.is_visible(timeout=1_000):
+                        button.click(timeout=5_000)
+                        return
+                except Exception:
+                    continue
+            page.wait_for_timeout(500)
+        diagnostics = self._visible_button_diagnostics(page)
         raise BrokerError(
             error_payload(
                 "ai_studio_upload_missing",
                 problem="AI Studio insert image button was not found",
-                cause="known insert-media selectors did not match",
+                cause=diagnostics or "known insert-media selectors did not match",
                 fix="open AI Studio and verify the Insert images or files button is visible",
                 retryable=True,
             )
         )
+
+    def _visible_button_diagnostics(self, page: Any) -> str:
+        try:
+            buttons = page.evaluate(
+                """() => Array.from(document.querySelectorAll("button"))
+                    .map((el, index) => ({
+                        index,
+                        aria: el.getAttribute("aria-label") || "",
+                        text: (el.innerText || el.textContent || "").trim().slice(0, 80),
+                        visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                        disabled: String(el.disabled || el.getAttribute("aria-disabled") || "")
+                    }))
+                    .filter(item => item.visible)
+                    .slice(-12)"""
+            )
+            summary = json.dumps(buttons, ensure_ascii=False)
+            return summary[:500]
+        except Exception:
+            return ""
 
     def _acknowledge_upload_copyright(self, page: Any) -> bool:
         for label in ("Agree to the copyright acknowledgement", "Acknowledge"):
